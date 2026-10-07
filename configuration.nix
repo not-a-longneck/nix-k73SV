@@ -201,23 +201,12 @@
     rustdesk-flutter
   ];
 
-  # Rustdesk as a service
-  systemd.services.rustdesk = {
-    description = "RustDesk remote access service";
-    wantedBy = [ "multi-user.target" ];
-    wants = [ "network-online.target" ];
-    after = [ "network-online.target" "display-manager.service" ];
-    path = with pkgs; [ systemd procps coreutils ];
-    serviceConfig = {
-      ExecStart = "${pkgs.rustdesk-flutter}/bin/rustdesk --service";
-      Restart = "always";
-      RestartSec = 5;
-    };
-  };
 
 # Optional, but recommended for a laptop: don't suspend when the lid closes
 services.logind.lidSwitch = "ignore";
 services.logind.lidSwitchExternalPower = "ignore";
+
+
   # ======================================
   # MOUNTS
   # ======================================
