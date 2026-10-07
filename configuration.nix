@@ -198,10 +198,20 @@
     veracrypt       # Encryption management
     ntfs3g          # Windows filesystem support
     kdePackages.kate
+    rustdesk-flutter
   ];
 
-  # (removed: spice-vdagent package, spice-vdagentd service and the
-  #  "copypaste" alias; they are only useful inside a VM)
+  # Rustdesk as a service
+  systemd.services.rustdesk-client = {
+      description = "RustDesk Unattended Access Service";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "network.target" ];
+      serviceConfig = {
+        Type = "simple";
+        ExecStart = "${pkgs.rustdesk-flutter}/bin/rustdesk --server";
+        Restart = "always";
+      };
+    };
 
   # ======================================
   # MOUNTS
