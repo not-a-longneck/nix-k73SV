@@ -197,7 +197,6 @@
     cifs-utils      # SMB/CIFS mount support
     veracrypt       # Encryption management
     ntfs3g          # Windows filesystem support
-    pyload-ng       # Download manager
     kdePackages.kate
   ];
 
