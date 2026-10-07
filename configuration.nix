@@ -7,12 +7,12 @@
 {
   imports = [
     ./hardware-configuration.nix   # REGENERATE on the laptop: sudo nixos-generate-config
-    ./scripts/nix-save.nix
+    ./scripts/nix-update.nix
     ./scripts/compressall.nix
   ];
 
-  # Enforce experimental features for non-git Flake workflows
-  nix.settings.experimental-features = [ "nix-command" "flakes" ];
+  # Enable the modern `nix` CLI (flakes are not used in this setup)
+  nix.settings.experimental-features = [ "nix-command" ];
 
   # ======================================
   # SYSTEM & BOOTLOADER
