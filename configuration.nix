@@ -169,8 +169,7 @@ environment.systemPackages = with pkgs; [
     mako                     # Lightweight Wayland notification daemon
   ];
 
-  services.logind.lidSwitch = "ignore";
-  services.logind.lidSwitchExternalPower = "ignore";
+
 
   # ======================================
   # MOUNTS
@@ -231,6 +230,13 @@ environment.systemPackages = with pkgs; [
     enable = true;
     wlr.enable = true;
     extraPortals = [ pkgs.xdg-desktop-portal-wlr ];
+    config.common.default = "*";
+  };
+  
+  # Replace old lid switch options:
+  services.logind.settings.Login = {
+    HandleLidSwitch = "ignore";
+    HandleLidSwitchExternalPower = "ignore";
   };
 
   # ======================================
