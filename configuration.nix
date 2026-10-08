@@ -26,17 +26,7 @@
     useOSProber = true;
   };
 
-  # --- If your machine is actually booting UEFI, use this instead: ---
-  # boot.loader.grub = {
-  #   enable = true;
-  #   device = "nodev";
-  #   efiSupport = true;
-  #   useOSProber = true;
-  # };
-  # boot.loader.efi.canTouchEfiVariables = true;
-  # (and mount the EFI partition at /boot)
-
-  # Use latest kernel (fine here since we are not using the legacy NVIDIA driver)
+  # Use latest kernel
   boot.kernelPackages = pkgs.linuxPackages_latest;
   boot.kernelModules = [ "fuse" ];
 
@@ -52,10 +42,6 @@
   hardware.enableRedistributableFirmware = true;   # Wi-Fi / Bluetooth firmware
   hardware.cpu.intel.updateMicrocode = true;
 
-  # Intel integrated graphics via the modesetting driver.
-  # The GeForce GT 540M-class dGPU is too old for current NVIDIA drivers (390xx
-  # does not work with recent kernels), so we run on the Intel iGPU only and
-  # leave the NVIDIA chip to nouveau, which can power it down when idle.
   services.xserver.videoDrivers = [ "modesetting" ];
   hardware.graphics = {
     enable = true;
@@ -64,13 +50,15 @@
     ];
   };
 
+  # Virtual input device capability for Sunshine remote input
+  hardware.uinput.enable = true;
+
   # Laptop essentials
   services.libinput.enable = true;        # touchpad
   hardware.bluetooth.enable = true;
   services.thermald.enable = true;        # Intel thermal management
   services.fstrim.enable = true;          # if the laptop has an SSD
   services.upower.enable = true;
-  # Plasma 6 uses power-profiles-daemon for the battery/performance slider.
 
   # Compressed swap in RAM; helpful on older laptops with limited memory
   zramSwap.enable = true;
@@ -92,7 +80,6 @@
   systemd.coredump.enable = false;
 
   # Mount local cache to RAM disk to clear history/trackers instantly on power-off
-  # (lower this to 512M if the laptop has 4 GB of RAM or less)
   fileSystems."/home/admin/.cache" = {
     device = "tmpfs";
     fsType = "tmpfs";
@@ -106,6 +93,7 @@
   networking = {
     hostName = "nixos";
     networkmanager.enable = true;   # handles Wi-Fi as well
+    networkmanager.wifi.powersave = false; # prevents Wi-Fi dropouts on idle
   };
 
   time.timeZone = "Europe/Copenhagen";
@@ -113,33 +101,9 @@
   i18n.defaultLocale = "en_DK.UTF-8";
   console.keyMap = "dk";
 
-  # ======================================
-  # DESKTOP & GRAPHICS (KDE)
-  # ======================================
-
-  services.xserver = {
-    enable = true;
-    xkb = {
-      layout = "dk";
-      variant = "";
-    };
-  };
-
-  services.displayManager.sddm.enable = true;
-  services.desktopManager.plasma6.enable = true;
-
-  # Global defaults to disable Dolphin previews and Taskbar thumbnail popups
-  environment.etc = {
-    "xdg/dolphinrc".text = ''
-      [PreviewSettings]
-      Plugins=
-    '';
-
-    "xdg/plasmarc".text = ''
-      [TaskManager]
-      ShowTooltips=false
-    '';
-  };
+  # Disable default physical display managers (headless boot)
+  services.displayManager.sddm.enable = false;
+  services.desktopManager.plasma6.enable = false;
 
   # ======================================
   # AUDIO (PIPEWIRE)
@@ -149,7 +113,6 @@
     enable = true;
     alsa.enable = true;
     pulse.enable = true;
-    # Extra configuration to stabilize the clock and handle choppiness
     extraConfig.pipewire."92-low-latency" = {
       "context.properties" = {
         "default.clock.rate" = 48000;
@@ -169,6 +132,15 @@
     description = "admin";
     extraGroups = [ "networkmanager" "wheel" "video" "render" "storage" "disk" ];
     hashedPassword = "$6$Osqk1/PTMVPFxz.R$xnhXNz5ePRgPQZtGMaXlSDInDsrwNocuRqVmTfZcq4ujAer6PiesG27vZpkxdMJh3gtSzP9qOlTs8CTP9Pf.f/";
+  };
+
+  # Dedicated background streaming account for virtual desktop session
+  users.users.streamer = {
+    isNormalUser = true;
+    description = "Virtual Desktop Streamer";
+    extraGroups = [ "audio" "video" "render" "input" "uinput" ];
+    hashedPassword = "!";
+    linger = true; # Keeps background session active on boot
   };
 
   # Grant admin sudo rights to VeraCrypt/virtual drives
@@ -199,21 +171,20 @@
     ntfs3g          # Windows filesystem support
     kdePackages.kate
     rustdesk-flutter
+    wayfire         # Standalone 3D Wayland desktop environment
+    wf-shell        # Panel, dock, and launchers for Wayfire
+    alacritty       # Terminal emulator inside virtual desktop
+    pcmanfm-qt      # Standalone file manager inside virtual desktop
   ];
 
-
-# Optional, but recommended for a laptop: don't suspend when the lid closes
-services.logind.lidSwitch = "ignore";
-services.logind.lidSwitchExternalPower = "ignore";
-
+  # Laptop lid settings (don't suspend when closed)
+  services.logind.lidSwitch = "ignore";
+  services.logind.lidSwitchExternalPower = "ignore";
 
   # ======================================
   # MOUNTS
   # ======================================
 
-  # Network Storage Mount (CIFS Tower Share)
-  # A laptop is often away from home, so "nofail" + short timeout keep boot
-  # and shutdown from hanging when the share is unreachable.
   fileSystems."/mnt/tower/backups" = {
     device = "//192.168.1.53/backups";
     fsType = "cifs";
@@ -239,66 +210,36 @@ services.logind.lidSwitchExternalPower = "ignore";
   };
 
   # ======================================
-  # HEADLESS SUNSHINE (dedicated streaming session)
+  # HEADLESS VIRTUAL DESKTOP & SUNSHINE
   # ======================================
 
-  # Locked-down user: no wheel, password login disabled (autologin only)
-  users.users.streamer = {
-    isNormalUser = true;
-    description = "Sunshine streaming session";
-    extraGroups = [ "video" "render" "input" ];
-    hashedPassword = "!";
-  };
-
+  # System-wide Sunshine streaming server
   services.sunshine = {
     enable = true;
-    autoStart = false;       # we launch it from the session script below
-    capSysAdmin = true;      # needed for KMS capture on Wayland
+    autoStart = true;
+    capSysAdmin = true;
     openFirewall = true;
-    settings = {
-      capture = "kms";
-      # encoder = "vaapi";   # or "software"; see notes below
-    };
-    applications = {
-      apps = [
-        { name = "Terminal"; cmd = "${pkgs.foot}/bin/foot"; }
-        { name = "Firefox";  cmd = "${pkgs.firefox}/bin/firefox"; }
-      ];
-    };
   };
 
-  # Session script: start Sunshine in the background, then keep Cage alive
-  # with a program that does nothing. Apps launched from Moonlight appear
-  # as Wayland clients inside Cage.
-  services.displayManager.sessionPackages = let
-    streamSession = pkgs.writeShellScript "sunshine-cage-session" ''
-      ${config.security.wrapperDir}/sunshine &
-      exec ${pkgs.coreutils}/bin/sleep infinity
-    '';
-  in [
-    ((pkgs.writeTextDir "share/wayland-sessions/sunshine-cage.desktop" ''
-      [Desktop Entry]
-      Name=Sunshine (Cage)
-      Exec=${pkgs.cage}/bin/cage -s -- ${streamSession}
-      Type=Application
-    '').overrideAttrs (old: {
-      passthru = (old.passthru or { }) // { providedSessions = [ "sunshine-cage" ]; };
-    }))
-  ];
-
+  # Auto-login the streamer user into Cage running Wayfire as a virtual desktop
   services.displayManager.autoLogin = {
     enable = true;
     user = "streamer";
   };
-  services.displayManager.defaultSession = "sunshine-cage";
-  
+
+  services.cage = {
+    enable = true;
+    user = "streamer";
+    program = "${pkgs.wayfire}/bin/wayfire";
+  };
+
   # ======================================
   # SECURE SSH & FIREWALL (LAN ONLY)
   # ======================================
-  
+
   services.openssh = {
     enable = true;
-    openFirewall = false; # Keep false so port 22 is not open to the public
+    openFirewall = false;
     settings = {
       PasswordAuthentication = true;
       KbdInteractiveAuthentication = true;
@@ -308,12 +249,10 @@ services.logind.lidSwitchExternalPower = "ignore";
       AllowUsers admin
     '';
   };
-  
-  # Allow ping explicitly across the firewall
+
   networking.firewall.allowPing = true;
-  
-  # Insert the LAN rule at the top of the chain (using -I instead of -A)
-  # Adjust '192.168.1.0/24' to match your router's IP range if different
+
+  # Allow local network SSH access at position 1 in iptables chain
   networking.firewall.extraCommands = ''
     iptables -I INPUT 1 -p tcp --dport 22 -s 192.168.1.0/24 -j ACCEPT
   '';
