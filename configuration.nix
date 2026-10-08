@@ -63,6 +63,14 @@
   # Compressed swap in RAM; helpful on older laptops with limited memory
   zramSwap.enable = true;
 
+  # Disable sleep on lid close
+  services.logind.settings = {
+    Login = {
+      HandleLidSwitch = "ignore";
+      HandleLidSwitchExternalPower = "ignore";
+    };
+  };
+
   # ======================================
   # PRIVACY & SECURITY
   # ======================================
@@ -178,9 +186,6 @@
     pcmanfm-qt      # Standalone file manager inside virtual desktop
   ];
 
-  # Laptop lid settings (don't suspend when closed)
-  services.logind.lidSwitch = "ignore";
-  services.logind.lidSwitchExternalPower = "ignore";
 
   # ======================================
   # MOUNTS
