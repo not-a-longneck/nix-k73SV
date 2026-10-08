@@ -162,6 +162,7 @@
 
   nixpkgs.config.allowUnfree = true;
   services.flatpak.enable = true;
+  xdg.portal.enable = true;
 
   programs.firefox.enable = true;
 
