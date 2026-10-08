@@ -257,8 +257,6 @@
 
   programs.fuse.userAllowOther = true;
 
-  services.fstrim.enable = true;
-
   # ------------------------------------------------------------
   # System state version
   # ------------------------------------------------------------
