@@ -1,11 +1,10 @@
-{ ... }:
+{ pkgs, ... }:
 
 let
   baseUrl = "https://raw.githubusercontent.com/not-a-longneck/nix-k73SV/main";
+  apiUrl = "https://api.github.com/repos/not-a-longneck/nix-k73SV/commits/main";
   configDir = "/etc/nixos";
 
-  # Add any new files you want to track here (relative to /etc/nixos/)
-  # NOTE: never add hardware-configuration.nix. It is specific to this laptop.
   filesToSync = [
     "configuration.nix"
     "scripts/nix-update.nix"
@@ -13,6 +12,9 @@ let
   ];
 in
 {
+  # Ensure jq and curl are available in system environment
+  environment.systemPackages = [ pkgs.jq pkgs.curl ];
+
   environment.interactiveShellInit = ''
     nix-update() {
       echo "📦 Step 1: Creating backups..."
@@ -24,12 +26,15 @@ in
       done
 
       echo "🔄 Step 2: Downloading files from GitHub..."
+      commit_msg=$(${pkgs.curl}/bin/curl -sSL "${apiUrl}" | ${pkgs.jq}/bin/jq -r '.commit.message' | head -n 1)
+      if [ -n "$commit_msg" ]; then
+        echo "($commit_msg)"
+      fi
+
       local download_failed=0
       for file in ${builtins.concatStringsSep " " filesToSync}; do
-        # Ensure target subdirectories exist (e.g., scripts/)
         sudo mkdir -p "$(dirname "${configDir}/$file")"
 
-        # -f makes curl fail on HTTP errors (e.g. 404) instead of saving the error page
         if ! sudo curl -fsSL -o "${configDir}/$file" "${baseUrl}/$file"; then
           echo "❌ Failed to download $file"
           download_failed=1
