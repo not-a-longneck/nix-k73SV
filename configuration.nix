@@ -1,135 +1,214 @@
-{ config, pkgs, ... }:
+# Edit this configuration file to define what should be installed on
+# your system. Help is available in the configuration.nix(5) man page
+# and in the NixOS manual (accessible by running ‘nixos-help’).
 
+{ config, pkgs, lib, ... }:
+
+let
+  # Pinned so the system-level Sunshine service can point at this user's
+  # PipeWire socket. Verify with `id streamer` BEFORE rebuilding; if it differs,
+  # use the real value (changing an existing user's UID needs a home chown).
+  streamerUid = 1001;
+
+  # Sunshine config. Written here (rather than via services.sunshine.settings)
+  # because the module's generated file is not exposed to a custom system unit.
+  sunshineConf = pkgs.writeText "sunshine.conf" ''
+    capture = kms
+    encoder = software
+    sw_preset = ultrafast
+  '';
+in
 {
   imports = [
-    ./hardware-configuration.nix
+    ./hardware-configuration.nix   # REGENERATE on the laptop: sudo nixos-generate-config
+    ./scripts/nix-update.nix
+    ./scripts/compressall.nix
   ];
 
-  # ------------------------------------------------------------
-  # Boot
-  # ------------------------------------------------------------
+  # Enable the modern `nix` CLI (flakes are not used in this setup)
+  nix.settings.experimental-features = [ "nix-command" ];
+
+  # ======================================
+  # SYSTEM & BOOTLOADER
+  # ======================================
 
   boot.loader.grub = {
     enable = true;
-    device = "/dev/sda";
+    device = "/dev/sda";   # check with: lsblk
     useOSProber = true;
   };
 
   boot.kernelPackages = pkgs.linuxPackages_latest;
 
-  # ------------------------------------------------------------
-  # Nix
-  # ------------------------------------------------------------
+  # Replaces the manual /etc/fuse.conf and the fuse kernel module entry
+  programs.fuse.userAllowOther = true;
 
-  nix.settings.experimental-features = [
-    "nix-command"
-  ];
-
-  # ------------------------------------------------------------
-  # Hardware
-  # ASUS K73SV: Intel Sandy Bridge graphics
-  # ------------------------------------------------------------
+  # ======================================
+  # HARDWARE (Intel CPU/iGPU laptop)
+  # ======================================
 
   hardware.enableRedistributableFirmware = true;
   hardware.cpu.intel.updateMicrocode = true;
 
-  services.xserver.videoDrivers = [ "modesetting" ];
-
   hardware.graphics = {
     enable = true;
+    # Used for video decoding in apps. Sunshine itself encodes in software
+    # because the Sandy Bridge hardware encoder crashes.
+    extraPackages = with pkgs; [ intel-vaapi-driver ];
   };
 
-  environment.systemPackages = with pkgs; [
-    intel-vaapi-driver
-    libva-utils
-  ];
-
-  # ------------------------------------------------------------
-  # Input / devices
-  # ------------------------------------------------------------
-
+  # Virtual input devices for Sunshine remote control
   hardware.uinput.enable = true;
 
+  # Laptop essentials
   services.libinput.enable = true;
+  hardware.bluetooth.enable = true;
+  services.thermald.enable = true;
+  services.fstrim.enable = true;
+  services.upower.enable = true;
 
-  # ------------------------------------------------------------
-  # Networking
-  # ------------------------------------------------------------
+  zramSwap.enable = true;
 
-  networking.networkmanager.enable = true;
+  # ======================================
+  # PRIVACY & SECURITY
+  # ======================================
 
-  networking.wireless.enable = false;
+  services.journald.extraConfig = ''
+    Storage=volatile
+    ForwardToSyslog=no
+    ForwardToKMsg=no
+    ForwardToConsole=no
+    ForwardToWall=no
+  '';
 
-  # ------------------------------------------------------------
-  # Time / locale
-  # ------------------------------------------------------------
+  systemd.coredump.enable = false;
+
+  fileSystems."/home/admin/.cache" = {
+    device = "tmpfs";
+    fsType = "tmpfs";
+    options = [ "nosuid" "nodev" "relatime" "size=1G" ];
+  };
+
+  # ======================================
+  # NETWORKING & LOCALIZATION
+  # ======================================
+
+  networking = {
+    hostName = "nixos";
+    networkmanager.enable = true;
+    networkmanager.wifi.powersave = false;
+  };
 
   time.timeZone = "Europe/Copenhagen";
 
   i18n.defaultLocale = "en_DK.UTF-8";
+  console.keyMap = "dk";
+  services.xserver.xkb.layout = "dk";   # keyboard layout for the SDDM greeter and Plasma
 
-  console = {
-    keyMap = "dk";
-  };
+  # ======================================
+  # AUDIO (PIPEWIRE)
+  # ======================================
 
-  # ------------------------------------------------------------
-  # Audio
-  # ------------------------------------------------------------
-
+  # Realtime scheduling daemon (fixes WirePlumber RTKit errors)
   security.rtkit.enable = true;
 
   services.pipewire = {
     enable = true;
-
     alsa.enable = true;
-    alsa.support32Bit = true;
-
     pulse.enable = true;
-
-    wireplumber.enable = true;
+    extraConfig.pipewire."92-low-latency" = {
+      "context.properties" = {
+        "default.clock.rate" = 48000;
+        "default.clock.quantum" = 1024;
+        "default.clock.min-quantum" = 512;
+        "default.clock.max-quantum" = 2048;
+      };
+    };
   };
 
-  # ------------------------------------------------------------
-  # Users
-  # ------------------------------------------------------------
+  # ======================================
+  # USERS & SECURITY
+  # ======================================
 
   users.users.admin = {
     isNormalUser = true;
-
-    extraGroups = [
-      "wheel"
-      "networkmanager"
-      "video"
-      "render"
-      "storage"
-      "disk"
-    ];
-
-    # Put your existing hashed password here.
-    # Do not use a plaintext password in this file.
+    description = "admin";
+    extraGroups = [ "networkmanager" "wheel" "video" "render" "storage" "disk" ];
     hashedPassword = "$6$Osqk1/PTMVPFxz.R$xnhXNz5ePRgPQZtGMaXlSDInDsrwNocuRqVmTfZcq4ujAer6PiesG27vZpkxdMJh3gtSzP9qOlTs8CTP9Pf.f/";
   };
 
   users.users.streamer = {
     isNormalUser = true;
+    description = "Virtual Desktop Streamer";
+    uid = streamerUid;
+    extraGroups = [ "audio" "video" "render" "input" "uinput" ];
 
-    extraGroups = [
-      "audio"
-      "video"
-      "render"
-      "input"
-      "uinput"
-    ];
+    # You now log in through SDDM, so this account needs a real password.
+    # Generate one with:  mkpasswd -m sha-512
+    hashedPassword = "$6$3dru9zMRbrVm0KWn$g22JXOtbKRAMjaQvx.OJU4/EEracvCMCLFNATpZlzZ8UDFOS7XnqTDkrSrwf21R5/MSRtmefciO5ZIFVC26Z00";
 
-    # Disable password login for the streaming account.
-    hashedPassword = "!";
-
+    # Starts the user manager (and PipeWire) at boot, so audio exists before anyone logs in.
     linger = true;
   };
 
-  # ------------------------------------------------------------
-  # KDE Plasma 6 / KWin
-  # ------------------------------------------------------------
+  services.udev.extraRules = ''
+    KERNEL=="dm-*", ENV{ID_FS_USAGE}=="filesystem", OWNER="admin", GROUP="users", MODE="0775"
+  '';
+
+  system.activationScripts.nixosFolderPermissions = {
+    text = ''
+      chown -R admin:users /etc/nixos
+      chmod -R 755 /etc/nixos
+    '';
+  };
+
+  # ======================================
+  # ENVIRONMENT & PACKAGES
+  # ======================================
+
+  nixpkgs.config.allowUnfree = true;
+  services.flatpak.enable = true;
+
+  programs.firefox.enable = true;
+
+  environment.systemPackages = with pkgs; [
+    cifs-utils
+    veracrypt
+    ntfs3g
+    kdePackages.kate
+  ];
+
+  # ======================================
+  # MOUNTS
+  # ======================================
+
+  fileSystems."/mnt/tower/backups" = {
+    device = "//192.168.1.53/backups";
+    fsType = "cifs";
+    options = [
+      "guest"
+      "uid=1000"
+      "gid=100"
+      "rw"
+      "forceuid"
+      "forcegid"
+      "noperm"
+      "nobrl"
+      "cache=none"
+      "iocharset=utf8"
+      "vers=3.0"
+      "soft"
+      "nofail"
+      "_netdev"
+      "x-systemd.automount"
+      "x-systemd.idle-timeout=60"
+      "x-systemd.mount-timeout=10"
+    ];
+  };
+
+  # ======================================
+  # DESKTOP: PLASMA 6 + SDDM LOGIN SCREEN
+  # ======================================
 
   services.displayManager.sddm = {
     enable = true;
@@ -137,129 +216,101 @@
   };
 
   services.desktopManager.plasma6.enable = true;
+  services.displayManager.defaultSession = "plasma";
 
-  services.displayManager.autoLogin = {
-    enable = true;
-    user = "streamer";
-  };
+  # No autologin: the SDDM greeter is what you see (and stream) after boot.
 
-  # Plasma is a Wayland compositor, so do not use Cage.
-  environment.sessionVariables = {
-    QT_QPA_PLATFORM = "wayland";
-  };
+  # ======================================
+  # SUNSHINE (SYSTEM-LEVEL, STREAMS THE LOGIN SCREEN)
+  # ======================================
 
-  # ------------------------------------------------------------
-  # Permanent virtual monitor for Sunshine
-  #
-  # KWin sees this as:
-  #     Virtual-Sunshine
-  #
-  # Resolution:
-  #     1920x1080
-  #
-  # The physical laptop display is NOT disabled.
-  # ------------------------------------------------------------
-
-  systemd.user.services.sunshine-virtual-monitor = {
-    description = "Permanent virtual monitor for Sunshine";
-
-    wantedBy = [
-      "graphical-session.target"
-    ];
-
-    after = [
-      "graphical-session.target"
-    ];
-
-    serviceConfig = {
-      ExecStart =
-        "${pkgs.kdePackages.krfb}/bin/krfb-virtualmonitor "
-        + "--resolution 1920x1080 "
-        + "--name Sunshine "
-        + "--password sunshine-local "
-        + "--port 5921";
-
-      Restart = "on-failure";
-      RestartSec = 2;
-    };
-  };
-
-  # ------------------------------------------------------------
-  # Sunshine
-  # ------------------------------------------------------------
-
+  # The module is kept for the package, firewall ports, avahi and uinput udev
+  # rules. Its user service is disabled; the system service below replaces it.
   services.sunshine = {
     enable = true;
-    autoStart = true;
-
+    autoStart = false;
     openFirewall = true;
+  };
 
-    settings = {
-      # KDE Plasma / KWin Wayland capture.
-      capture = "kwin";
+  systemd.services.sunshine = {
+    description = "Sunshine stream host (starts at boot, before login)";
+    wantedBy = [ "multi-user.target" ];
+    wants = [ "user@${toString streamerUid}.service" ];
+    after = [
+      "network-online.target"
+      "systemd-logind.service"
+      "user@${toString streamerUid}.service"
+    ];
 
-      # krfb-virtualmonitor creates:
-      #     Virtual-Sunshine
-      output_name = "Virtual-Sunshine";
+    # Audio: attach to the streamer user's PipeWire (kept alive by linger)
+    environment = {
+      XDG_RUNTIME_DIR = "/run/user/${toString streamerUid}";
+      PULSE_SERVER = "unix:/run/user/${toString streamerUid}/pulse/native";
+    };
 
-      # The K73SV is old. Use the Intel GPU for encoding
-      # rather than hammering the CPU with software encoding.
-      encoder = "vaapi";
+    serviceConfig = {
+      User = "streamer";
+      ExecStart = "${lib.getExe config.services.sunshine.package} ${sunshineConf}";
 
-      # Keep the stream modest for the old hardware.
-      #
-      # Moonlight can request lower resolutions if desired.
-      # 1080p60 is the ceiling.
-      min_threads = 2;
+      # KMS capture needs CAP_SYS_ADMIN; granting only this avoids running as root
+      AmbientCapabilities = [ "CAP_SYS_ADMIN" ];
+      CapabilityBoundingSet = [ "CAP_SYS_ADMIN" ];
+
+      Restart = "on-failure";
+      RestartSec = 3;
     };
   };
 
-  # ------------------------------------------------------------
-  # Power / laptop behaviour
-  # ------------------------------------------------------------
+  # ======================================
+  # POWER & LID
+  # ======================================
 
-  services.thermald.enable = true;
-
-  services.fstrim.enable = true;
-
-  services.upower.enable = true;
-
-  # Ignore the lid so closing the lid doesn't kill the
-  # streaming desktop.
+  # Lid closed = keep running
   services.logind.settings.Login = {
     HandleLidSwitch = "ignore";
     HandleLidSwitchExternalPower = "ignore";
     HandleLidSwitchDocked = "ignore";
   };
 
-  # ------------------------------------------------------------
-  # ZRAM
-  # ------------------------------------------------------------
+  # Never suspend: a sleeping laptop cannot be reached by Moonlight
+  systemd.targets = {
+    sleep.enable = false;
+    suspend.enable = false;
+    hibernate.enable = false;
+    hybrid-sleep.enable = false;
+  };
 
-  zramSwap.enable = true;
+  # ======================================
+  # SECURE SSH & FIREWALL (LAN ONLY)
+  # ======================================
 
-  # ------------------------------------------------------------
-  # SSH
-  # ------------------------------------------------------------
+  services.openssh = {
+    enable = true;
+    openFirewall = false;
+    settings = {
+      PasswordAuthentication = true;   # TODO: switch to keys, then set false
+      KbdInteractiveAuthentication = true;
+      PermitRootLogin = "no";
+    };
+    extraConfig = ''
+      AllowUsers admin
+    '';
+  };
 
-  services.openssh.enable = true;
+  # TODO: users.users.admin.openssh.authorizedKeys.keys = [ "ssh-ed25519 AAAA..." ];
 
-  # ------------------------------------------------------------
-  # Firewall
-  # Sunshine opens its own required ports above.
-  # ------------------------------------------------------------
+  networking.firewall.allowPing = true;
 
-  networking.firewall.enable = true;
+  networking.firewall.extraCommands = ''
+    iptables -I INPUT 1 -p tcp --dport 22 -s 192.168.1.0/24 -j ACCEPT
+  '';
+  networking.firewall.extraStopCommands = ''
+    iptables -D INPUT -p tcp --dport 22 -s 192.168.1.0/24 -j ACCEPT || true
+  '';
 
-  # ------------------------------------------------------------
-  # Misc.
-  # ------------------------------------------------------------
-
-  programs.fuse.userAllowOther = true;
-
-  # ------------------------------------------------------------
-  # System state version
-  # ------------------------------------------------------------
+  # ======================================
+  # SYSTEM STATE VERSION
+  # ======================================
 
   system.stateVersion = "25.11";
 }
