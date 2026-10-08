@@ -40,6 +40,11 @@ in
 
   boot.kernelPackages = pkgs.linuxPackages_latest;
 
+  # Disable the phantom VGA-1 connector (card0). The kernel reports it as
+  # connected with nothing plugged in, which made KWin turn off the laptop
+  # panel on lid close and killed the stream. Remove if you ever use that port.
+  boot.kernelParams = [ "video=VGA-1:d" ];
+
   # Replaces the manual /etc/fuse.conf and the fuse kernel module entry
   programs.fuse.userAllowOther = true;
 
