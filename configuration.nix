@@ -18,19 +18,15 @@
   # SYSTEM & BOOTLOADER
   # ======================================
 
-  # The ASUS K73-series is a 2011 Sandy Bridge laptop and normally boots in
-  # legacy BIOS mode. Set `device` to the DISK (not a partition) you install to.
   boot.loader.grub = {
     enable = true;
     device = "/dev/sda";   # check with: lsblk
     useOSProber = true;
   };
 
-  # Use latest kernel
   boot.kernelPackages = pkgs.linuxPackages_latest;
   boot.kernelModules = [ "fuse" ];
 
-  # Allow non-root users to use the allow_other mount option
   environment.etc."fuse.conf".text = ''
     user_allow_other
   '';
@@ -39,43 +35,33 @@
   # HARDWARE (Intel CPU/iGPU laptop)
   # ======================================
 
-  hardware.enableRedistributableFirmware = true;   # Wi-Fi / Bluetooth firmware
+  hardware.enableRedistributableFirmware = true;
   hardware.cpu.intel.updateMicrocode = true;
 
   services.xserver.videoDrivers = [ "modesetting" ];
   hardware.graphics = {
     enable = true;
     extraPackages = with pkgs; [
-      intel-vaapi-driver   # VA-API video decode for Sandy Bridge
+      intel-vaapi-driver
     ];
   };
 
-  # Virtual input device capability for Sunshine remote input
+  # Enable virtual input devices for Sunshine remote control
   hardware.uinput.enable = true;
 
   # Laptop essentials
-  services.libinput.enable = true;        # touchpad
+  services.libinput.enable = true;
   hardware.bluetooth.enable = true;
-  services.thermald.enable = true;        # Intel thermal management
-  services.fstrim.enable = true;          # if the laptop has an SSD
+  services.thermald.enable = true;
+  services.fstrim.enable = true;
   services.upower.enable = true;
 
-  # Compressed swap in RAM; helpful on older laptops with limited memory
   zramSwap.enable = true;
-
-  # Disable sleep on lid close
-  services.logind.settings = {
-    Login = {
-      HandleLidSwitch = "ignore";
-      HandleLidSwitchExternalPower = "ignore";
-    };
-  };
 
   # ======================================
   # PRIVACY & SECURITY
   # ======================================
 
-  # Store system logs only in volatile memory (wiped on restart)
   services.journald.extraConfig = ''
     Storage=volatile
     ForwardToSyslog=no
@@ -84,10 +70,8 @@
     ForwardToWall=no
   '';
 
-  # Disable core dumps on application crashes
   systemd.coredump.enable = false;
 
-  # Mount local cache to RAM disk to clear history/trackers instantly on power-off
   fileSystems."/home/admin/.cache" = {
     device = "tmpfs";
     fsType = "tmpfs";
@@ -100,8 +84,8 @@
 
   networking = {
     hostName = "nixos";
-    networkmanager.enable = true;   # handles Wi-Fi as well
-    networkmanager.wifi.powersave = false; # prevents Wi-Fi dropouts on idle
+    networkmanager.enable = true;
+    networkmanager.wifi.powersave = false;
   };
 
   time.timeZone = "Europe/Copenhagen";
@@ -109,9 +93,12 @@
   i18n.defaultLocale = "en_DK.UTF-8";
   console.keyMap = "dk";
 
-  # Disable default physical display managers (headless boot)
+  # Fully disable physical display managers
   services.displayManager.sddm.enable = false;
   services.desktopManager.plasma6.enable = false;
+
+  # Enable Realtime Scheduling Daemon (Fixes WirePlumber RTKit errors)
+  security.rtkit.enable = true;
 
   # ======================================
   # AUDIO (PIPEWIRE)
@@ -142,21 +129,18 @@
     hashedPassword = "$6$Osqk1/PTMVPFxz.R$xnhXNz5ePRgPQZtGMaXlSDInDsrwNocuRqVmTfZcq4ujAer6PiesG27vZpkxdMJh3gtSzP9qOlTs8CTP9Pf.f/";
   };
 
-  # Dedicated background streaming account for virtual desktop session
   users.users.streamer = {
     isNormalUser = true;
     description = "Virtual Desktop Streamer";
     extraGroups = [ "audio" "video" "render" "input" "uinput" ];
     hashedPassword = "!";
-    linger = true; # Keeps background session active on boot
+    linger = true;
   };
 
-  # Grant admin sudo rights to VeraCrypt/virtual drives
   services.udev.extraRules = ''
     KERNEL=="dm-*", ENV{ID_FS_USAGE}=="filesystem", OWNER="admin", GROUP="users", MODE="0775"
   '';
 
-  # Ensure user ownership over local nix folder permissions
   system.activationScripts.nixosFolderPermissions = {
     text = ''
       chown -R admin:users /etc/nixos
@@ -170,22 +154,24 @@
 
   nixpkgs.config.allowUnfree = true;
   services.flatpak.enable = true;
-  xdg.portal.enable = true;
 
   programs.firefox.enable = true;
 
   environment.systemPackages = with pkgs; [
-    cifs-utils      # SMB/CIFS mount support
-    veracrypt       # Encryption management
-    ntfs3g          # Windows filesystem support
+    cifs-utils
+    veracrypt
+    ntfs3g
     kdePackages.kate
     rustdesk-flutter
-    wayfire         # Standalone 3D Wayland desktop environment
-    wf-shell        # Panel, dock, and launchers for Wayfire
-    alacritty       # Terminal emulator inside virtual desktop
-    pcmanfm-qt      # Standalone file manager inside virtual desktop
+    wayfire         # Headless 3D Wayland compositor
+    wf-shell        # Panel and desktop UI
+    alacritty       # Terminal emulator
+    pcmanfm-qt      # Standalone file manager
+    mako            # Lightweight Wayland notification daemon (Fixes notification timeouts)
   ];
 
+  services.logind.lidSwitch = "ignore";
+  services.logind.lidSwitchExternalPower = "ignore";
 
   # ======================================
   # MOUNTS
@@ -219,15 +205,17 @@
   # HEADLESS VIRTUAL DESKTOP & SUNSHINE
   # ======================================
 
-  # System-wide Sunshine streaming server
   services.sunshine = {
     enable = true;
     autoStart = true;
     capSysAdmin = true;
     openFirewall = true;
+    settings = {
+      encoder = "software"; # Avoid Sandy Bridge hardware encoder crash
+    };
   };
 
-  # Auto-login the streamer user into Cage running Wayfire as a virtual desktop
+  # Headless auto-login for streamer into Wayfire via Cage
   services.displayManager.autoLogin = {
     enable = true;
     user = "streamer";
@@ -237,6 +225,13 @@
     enable = true;
     user = "streamer";
     program = "${pkgs.wayfire}/bin/wayfire";
+  };
+
+  # Desktop integration portal
+  xdg.portal = {
+    enable = true;
+    wlr.enable = true;
+    extraPortals = [ pkgs.xdg-desktop-portal-wlr ];
   };
 
   # ======================================
@@ -258,7 +253,6 @@
 
   networking.firewall.allowPing = true;
 
-  # Allow local network SSH access at position 1 in iptables chain
   networking.firewall.extraCommands = ''
     iptables -I INPUT 1 -p tcp --dport 22 -s 192.168.1.0/24 -j ACCEPT
   '';
