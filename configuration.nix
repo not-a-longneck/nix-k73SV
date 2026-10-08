@@ -292,7 +292,38 @@ services.logind.lidSwitchExternalPower = "ignore";
   };
   services.displayManager.defaultSession = "sunshine-cage";
 
+  # ======================================
+  # SSH CONFIG (PASSWORD ONLY - LOCAL NETWORK ONLY)
+  # ======================================
 
+  services.openssh = {
+    enable = true;
+    openFirewall = false;   # Port 22 is opened only for the LAN by the rules below
+    settings = {
+      # Allow standard password logins
+      PasswordAuthentication = true;
+      KbdInteractiveAuthentication = true;
+
+      # Block the 'root' account from ever logging in
+      PermitRootLogin = "no";
+    };
+    # Only allow your admin user to log in
+    extraConfig = ''
+      AllowUsers admin
+    '';
+  };
+
+  # Firewall: allow SSH (port 22) ONLY from the local network.
+  # Everything else on port 22 is already dropped by the default firewall policy.
+  # (Adjust '192.168.1.0/24' if your router uses e.g. 192.168.0.0/24 or 10.0.0.0/24)
+  # If you use networking.nftables.enable = true, replace these two options with:
+  #   networking.firewall.extraInputRules = "ip saddr 192.168.1.0/24 tcp dport 22 accept";
+  networking.firewall.extraCommands = ''
+    iptables -A INPUT -p tcp --dport 22 -s 192.168.1.0/24 -j ACCEPT
+  '';
+  networking.firewall.extraStopCommands = ''
+    iptables -D INPUT -p tcp --dport 22 -s 192.168.1.0/24 -j ACCEPT || true
+  '';
 
   # ======================================
   # SYSTEM STATE VERSION
