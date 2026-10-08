@@ -157,17 +157,16 @@
 
   programs.firefox.enable = true;
 
-  environment.systemPackages = with pkgs; [
+environment.systemPackages = with pkgs; [
     cifs-utils
     veracrypt
     ntfs3g
     kdePackages.kate
-    rustdesk-flutter
-    wayfire         # Headless 3D Wayland compositor
-    wf-shell        # Panel and desktop UI
-    alacritty       # Terminal emulator
-    pcmanfm-qt      # Standalone file manager
-    mako            # Lightweight Wayland notification daemon (Fixes notification timeouts)
+    wayfire                  # Headless 3D Wayland compositor
+    wayfirePlugins.wf-shell  # Panel and desktop UI
+    alacritty                # Terminal emulator
+    pcmanfm-qt               # Standalone file manager
+    mako                     # Lightweight Wayland notification daemon
   ];
 
   services.logind.lidSwitch = "ignore";
