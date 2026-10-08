@@ -1,279 +1,267 @@
-# Edit this configuration file to define what should be installed on
-# your system. Help is available in the configuration.nix(5) man page
-# and in the NixOS manual (accessible by running ‘nixos-help’).
-
-{ config, pkgs, lib, ... }:
+{ config, pkgs, ... }:
 
 {
   imports = [
-    ./hardware-configuration.nix   # REGENERATE on the laptop: sudo nixos-generate-config
-    ./scripts/nix-update.nix
-    ./scripts/compressall.nix
+    ./hardware-configuration.nix
   ];
 
-  # Enable the modern `nix` CLI (flakes are not used in this setup)
-  nix.settings.experimental-features = [ "nix-command" ];
-
-  # ======================================
-  # SYSTEM & BOOTLOADER
-  # ======================================
+  # ------------------------------------------------------------
+  # Boot
+  # ------------------------------------------------------------
 
   boot.loader.grub = {
     enable = true;
-    device = "/dev/sda";   # check with: lsblk
+    device = "/dev/sda";
     useOSProber = true;
   };
 
   boot.kernelPackages = pkgs.linuxPackages_latest;
-  boot.kernelModules = [ "fuse" ];
 
-  environment.etc."fuse.conf".text = ''
-    user_allow_other
-  '';
+  # ------------------------------------------------------------
+  # Nix
+  # ------------------------------------------------------------
 
-  # ======================================
-  # HARDWARE (Intel CPU/iGPU laptop)
-  # ======================================
+  nix.settings.experimental-features = [
+    "nix-command"
+  ];
+
+  # ------------------------------------------------------------
+  # Hardware
+  # ASUS K73SV: Intel Sandy Bridge graphics
+  # ------------------------------------------------------------
 
   hardware.enableRedistributableFirmware = true;
   hardware.cpu.intel.updateMicrocode = true;
 
   services.xserver.videoDrivers = [ "modesetting" ];
+
   hardware.graphics = {
     enable = true;
-    extraPackages = with pkgs; [
-      intel-vaapi-driver
-    ];
   };
 
-  # Enable virtual input devices for Sunshine remote control
+  environment.systemPackages = with pkgs; [
+    intel-vaapi-driver
+    libva-utils
+  ];
+
+  # ------------------------------------------------------------
+  # Input / devices
+  # ------------------------------------------------------------
+
   hardware.uinput.enable = true;
 
-  # Laptop essentials
   services.libinput.enable = true;
-  hardware.bluetooth.enable = true;
-  services.thermald.enable = true;
-  services.fstrim.enable = true;
-  services.upower.enable = true;
 
-  zramSwap.enable = true;
+  # ------------------------------------------------------------
+  # Networking
+  # ------------------------------------------------------------
 
-  # ======================================
-  # PRIVACY & SECURITY
-  # ======================================
+  networking.networkmanager.enable = true;
 
-  services.journald.extraConfig = ''
-    Storage=volatile
-    ForwardToSyslog=no
-    ForwardToKMsg=no
-    ForwardToConsole=no
-    ForwardToWall=no
-  '';
+  networking.wireless.enable = false;
 
-  systemd.coredump.enable = false;
-
-  fileSystems."/home/admin/.cache" = {
-    device = "tmpfs";
-    fsType = "tmpfs";
-    options = [ "nosuid" "nodev" "relatime" "size=1G" ];
-  };
-
-  # ======================================
-  # NETWORKING & LOCALIZATION
-  # ======================================
-
-  networking = {
-    hostName = "nixos";
-    networkmanager.enable = true;
-    networkmanager.wifi.powersave = false;
-  };
+  # ------------------------------------------------------------
+  # Time / locale
+  # ------------------------------------------------------------
 
   time.timeZone = "Europe/Copenhagen";
 
   i18n.defaultLocale = "en_DK.UTF-8";
-  console.keyMap = "dk";
 
-  # Enable Realtime Scheduling Daemon (Fixes WirePlumber RTKit errors)
+  console = {
+    keyMap = "dk";
+  };
+
+  # ------------------------------------------------------------
+  # Audio
+  # ------------------------------------------------------------
+
   security.rtkit.enable = true;
-
-  # ======================================
-  # AUDIO (PIPEWIRE)
-  # ======================================
 
   services.pipewire = {
     enable = true;
+
     alsa.enable = true;
+    alsa.support32Bit = true;
+
     pulse.enable = true;
-    extraConfig.pipewire."92-low-latency" = {
-      "context.properties" = {
-        "default.clock.rate" = 48000;
-        "default.clock.quantum" = 1024;
-        "default.clock.min-quantum" = 512;
-        "default.clock.max-quantum" = 2048;
-      };
-    };
+
+    wireplumber.enable = true;
   };
 
-  # ======================================
-  # USERS & SECURITY
-  # ======================================
+  # ------------------------------------------------------------
+  # Users
+  # ------------------------------------------------------------
 
   users.users.admin = {
     isNormalUser = true;
-    description = "admin";
-    extraGroups = [ "networkmanager" "wheel" "video" "render" "storage" "disk" ];
-    hashedPassword = "$6$Osqk1/PTMVPFxz.R$xnhXNz5ePRgPQZtGMaXlSDInDsrwNocuRqVmTfZcq4ujAer6PiesG27vZpkxdMJh3gtSzP9qOlTs8CTP9Pf.f/";
+
+    extraGroups = [
+      "wheel"
+      "networkmanager"
+      "video"
+      "render"
+      "storage"
+      "disk"
+    ];
+
+    # Put your existing hashed password here.
+    # Do not use a plaintext password in this file.
+    hashedPassword = "REPLACE_WITH_YOUR_EXISTING_HASH";
   };
 
   users.users.streamer = {
     isNormalUser = true;
-    description = "Virtual Desktop Streamer";
-    extraGroups = [ "audio" "video" "render" "input" "uinput" ];
+
+    extraGroups = [
+      "audio"
+      "video"
+      "render"
+      "input"
+      "uinput"
+    ];
+
+    # Disable password login for the streaming account.
     hashedPassword = "!";
+
     linger = true;
   };
 
-  services.udev.extraRules = ''
-    KERNEL=="dm-*", ENV{ID_FS_USAGE}=="filesystem", OWNER="admin", GROUP="users", MODE="0775"
-  '';
+  # ------------------------------------------------------------
+  # KDE Plasma 6 / KWin
+  # ------------------------------------------------------------
 
-  system.activationScripts.nixosFolderPermissions = {
-    text = ''
-      chown -R admin:users /etc/nixos
-      chmod -R 755 /etc/nixos
-    '';
+  services.displayManager.sddm = {
+    enable = true;
+    wayland.enable = true;
   };
 
-  # ======================================
-  # ENVIRONMENT & PACKAGES
-  # ======================================
-
-  nixpkgs.config.allowUnfree = true;
-  services.flatpak.enable = true;
-
-  programs.firefox.enable = true;
-
-  environment.systemPackages = with pkgs; [
-    cifs-utils
-    veracrypt
-    ntfs3g
-    kdePackages.kate
-    mako
-  ];
-
-  # Forces Wayland to construct a dedicated virtual display output
-  environment.sessionVariables = {
-    WLR_HEADLESS_OUTPUTS = "1";
-    QT_QPA_PLATFORM = "wayland";
-  };
-
-  # ======================================
-  # MOUNTS
-  # ======================================
-
-  fileSystems."/mnt/tower/backups" = {
-    device = "//192.168.1.53/backups";
-    fsType = "cifs";
-    options = [
-      "guest"
-      "uid=1000"
-      "gid=100"
-      "rw"
-      "forceuid"
-      "forcegid"
-      "noperm"
-      "nobrl"
-      "cache=none"
-      "iocharset=utf8"
-      "vers=3.0"
-      "soft"
-      "nofail"
-      "_netdev"
-      "x-systemd.automount"
-      "x-systemd.idle-timeout=60"
-      "x-systemd.mount-timeout=10"
-    ];
-  };
-
-  # ======================================
-  # HEADLESS VIRTUAL DESKTOP & SUNSHINE
-  # ======================================
-
-  # Enable KDE Plasma 6 (SDDM physical login remains disabled)
-  services.displayManager.sddm.enable = false;
   services.desktopManager.plasma6.enable = true;
 
-  services.sunshine = {
-    enable = true;
-    autoStart = true;
-    capSysAdmin = true;
-    openFirewall = true;
-    settings = {
-      encoder = "software"; # Avoid Sandy Bridge hardware encoder crash
-      capture = "kms";
-    };
-  };
-
-  # Ensure user-level Sunshine starts automatically when graphical session initializes
-  systemd.user.services.sunshine = {
-    wantedBy = [ "graphical-session.target" ];
-  };
-
-  # Auto-login streamer into Plasma Wayland via Cage
   services.displayManager.autoLogin = {
     enable = true;
     user = "streamer";
   };
 
-  services.cage = {
-    enable = true;
-    user = "streamer";
-    program = "${pkgs.kdePackages.plasma-workspace}/bin/startplasma-wayland";
+  # Plasma is a Wayland compositor, so do not use Cage.
+  environment.sessionVariables = {
+    QT_QPA_PLATFORM = "wayland";
   };
 
-  # Desktop integration portal
-  xdg.portal = {
-    enable = true;
-    wlr.enable = true;
-    extraPortals = [ pkgs.xdg-desktop-portal-wlr ];
-    config.common.default = "*";
+  # ------------------------------------------------------------
+  # Permanent virtual monitor for Sunshine
+  #
+  # KWin sees this as:
+  #     Virtual-Sunshine
+  #
+  # Resolution:
+  #     1920x1080
+  #
+  # The physical laptop display is NOT disabled.
+  # ------------------------------------------------------------
+
+  systemd.user.services.sunshine-virtual-monitor = {
+    description = "Permanent virtual monitor for Sunshine";
+
+    wantedBy = [
+      "graphical-session.target"
+    ];
+
+    after = [
+      "graphical-session.target"
+    ];
+
+    serviceConfig = {
+      ExecStart =
+        "${pkgs.kdePackages.krfb}/bin/krfb-virtualmonitor "
+        + "--resolution 1920x1080 "
+        + "--name Sunshine "
+        + "--password sunshine-local "
+        + "--port 5921";
+
+      Restart = "on-failure";
+      RestartSec = 2;
+    };
   };
 
-  # Lid switch actions
+  # ------------------------------------------------------------
+  # Sunshine
+  # ------------------------------------------------------------
+
+  services.sunshine = {
+    enable = true;
+    autoStart = true;
+
+    openFirewall = true;
+
+    settings = {
+      # KDE Plasma / KWin Wayland capture.
+      capture = "kwin";
+
+      # krfb-virtualmonitor creates:
+      #     Virtual-Sunshine
+      output_name = "Virtual-Sunshine";
+
+      # The K73SV is old. Use the Intel GPU for encoding
+      # rather than hammering the CPU with software encoding.
+      encoder = "vaapi";
+
+      # Keep the stream modest for the old hardware.
+      #
+      # Moonlight can request lower resolutions if desired.
+      # 1080p60 is the ceiling.
+      min_threads = 2;
+    };
+  };
+
+  # ------------------------------------------------------------
+  # Power / laptop behaviour
+  # ------------------------------------------------------------
+
+  services.thermald.enable = true;
+
+  services.fstrim.enable = true;
+
+  services.upower.enable = true;
+
+  # Ignore the lid so closing the lid doesn't kill the
+  # streaming desktop.
   services.logind.settings.Login = {
     HandleLidSwitch = "ignore";
     HandleLidSwitchExternalPower = "ignore";
+    HandleLidSwitchDocked = "ignore";
   };
 
-  # ======================================
-  # SECURE SSH & FIREWALL (LAN ONLY)
-  # ======================================
+  # ------------------------------------------------------------
+  # ZRAM
+  # ------------------------------------------------------------
 
-  services.openssh = {
-    enable = true;
-    openFirewall = false;
-    settings = {
-      PasswordAuthentication = true;
-      KbdInteractiveAuthentication = true;
-      PermitRootLogin = "no";
-    };
-    extraConfig = ''
-      AllowUsers admin
-    '';
-  };
+  zramSwap.enable = true;
 
-  networking.firewall.allowPing = true;
+  # ------------------------------------------------------------
+  # SSH
+  # ------------------------------------------------------------
 
-  networking.firewall.extraCommands = ''
-    iptables -I INPUT 1 -p tcp --dport 22 -s 192.168.1.0/24 -j ACCEPT
-  '';
-  networking.firewall.extraStopCommands = ''
-    iptables -D INPUT -p tcp --dport 22 -s 192.168.1.0/24 -j ACCEPT || true
-  '';
+  services.openssh.enable = true;
 
-  # ======================================
-  # SYSTEM STATE VERSION
-  # ======================================
+  # ------------------------------------------------------------
+  # Firewall
+  # Sunshine opens its own required ports above.
+  # ------------------------------------------------------------
+
+  networking.firewall.enable = true;
+
+  # ------------------------------------------------------------
+  # Misc.
+  # ------------------------------------------------------------
+
+  programs.fuse.userAllowOther = true;
+
+  services.fstrim.enable = true;
+
+  # ------------------------------------------------------------
+  # System state version
+  # ------------------------------------------------------------
 
   system.stateVersion = "25.11";
 }
