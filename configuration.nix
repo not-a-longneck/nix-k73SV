@@ -107,7 +107,7 @@
 
     # Put your existing hashed password here.
     # Do not use a plaintext password in this file.
-    hashedPassword = "REPLACE_WITH_YOUR_EXISTING_HASH";
+    hashedPassword = "$6$Osqk1/PTMVPFxz.R$xnhXNz5ePRgPQZtGMaXlSDInDsrwNocuRqVmTfZcq4ujAer6PiesG27vZpkxdMJh3gtSzP9qOlTs8CTP9Pf.f/";
   };
 
   users.users.streamer = {
