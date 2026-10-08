@@ -93,10 +93,6 @@
   i18n.defaultLocale = "en_DK.UTF-8";
   console.keyMap = "dk";
 
-  # Fully disable physical display managers
-  services.displayManager.sddm.enable = false;
-  services.desktopManager.plasma6.enable = false;
-
   # Enable Realtime Scheduling Daemon (Fixes WirePlumber RTKit errors)
   security.rtkit.enable = true;
 
@@ -162,16 +158,13 @@
     veracrypt
     ntfs3g
     kdePackages.kate
-    wayfire                  # Headless 3D Wayland compositor
-    wayfirePlugins.wf-shell  # Panel and desktop UI
-    alacritty                # Terminal emulator
-    pcmanfm-qt               # Standalone file manager
-    mako                     # Lightweight Wayland notification daemon
+    mako
   ];
 
   # Forces Wayland to construct a dedicated virtual display output
   environment.sessionVariables = {
     WLR_HEADLESS_OUTPUTS = "1";
+    QT_QPA_PLATFORM = "wayland";
   };
 
   # ======================================
@@ -206,6 +199,10 @@
   # HEADLESS VIRTUAL DESKTOP & SUNSHINE
   # ======================================
 
+  # Enable KDE Plasma 6 (SDDM physical login remains disabled)
+  services.displayManager.sddm.enable = false;
+  services.desktopManager.plasma6.enable = true;
+
   services.sunshine = {
     enable = true;
     autoStart = true;
@@ -217,7 +214,12 @@
     };
   };
 
-  # Headless auto-login for streamer into Wayfire via Cage
+  # Ensure user-level Sunshine starts automatically when graphical session initializes
+  systemd.user.services.sunshine = {
+    wantedBy = [ "graphical-session.target" ];
+  };
+
+  # Auto-login streamer into Plasma Wayland via Cage
   services.displayManager.autoLogin = {
     enable = true;
     user = "streamer";
@@ -226,7 +228,7 @@
   services.cage = {
     enable = true;
     user = "streamer";
-    program = "${pkgs.wayfire}/bin/wayfire";
+    program = "${pkgs.kdePackages.plasma-workspace}/bin/startplasma-wayland";
   };
 
   # Desktop integration portal
