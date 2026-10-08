@@ -157,7 +157,7 @@
 
   programs.firefox.enable = true;
 
-environment.systemPackages = with pkgs; [
+  environment.systemPackages = with pkgs; [
     cifs-utils
     veracrypt
     ntfs3g
@@ -169,7 +169,10 @@ environment.systemPackages = with pkgs; [
     mako                     # Lightweight Wayland notification daemon
   ];
 
-
+  # Forces Wayland to construct a dedicated virtual display output
+  environment.sessionVariables = {
+    WLR_HEADLESS_OUTPUTS = "1";
+  };
 
   # ======================================
   # MOUNTS
@@ -210,6 +213,7 @@ environment.systemPackages = with pkgs; [
     openFirewall = true;
     settings = {
       encoder = "software"; # Avoid Sandy Bridge hardware encoder crash
+      capture = "kms";
     };
   };
 
@@ -232,8 +236,8 @@ environment.systemPackages = with pkgs; [
     extraPortals = [ pkgs.xdg-desktop-portal-wlr ];
     config.common.default = "*";
   };
-  
-  # Replace old lid switch options:
+
+  # Lid switch actions
   services.logind.settings.Login = {
     HandleLidSwitch = "ignore";
     HandleLidSwitchExternalPower = "ignore";
