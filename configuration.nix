@@ -291,35 +291,31 @@ services.logind.lidSwitchExternalPower = "ignore";
     user = "streamer";
   };
   services.displayManager.defaultSession = "sunshine-cage";
-
+  
   # ======================================
-  # SSH CONFIG (PASSWORD ONLY - LOCAL NETWORK ONLY)
+  # SECURE SSH & FIREWALL (LAN ONLY)
   # ======================================
-
+  
   services.openssh = {
     enable = true;
-    openFirewall = false;   # Port 22 is opened only for the LAN by the rules below
+    openFirewall = false; # Keep false so port 22 is not open to the public
     settings = {
-      # Allow standard password logins
       PasswordAuthentication = true;
       KbdInteractiveAuthentication = true;
-
-      # Block the 'root' account from ever logging in
       PermitRootLogin = "no";
     };
-    # Only allow your admin user to log in
     extraConfig = ''
       AllowUsers admin
     '';
   };
-
-  # Firewall: allow SSH (port 22) ONLY from the local network.
-  # Everything else on port 22 is already dropped by the default firewall policy.
-  # (Adjust '192.168.1.0/24' if your router uses e.g. 192.168.0.0/24 or 10.0.0.0/24)
-  # If you use networking.nftables.enable = true, replace these two options with:
-  #   networking.firewall.extraInputRules = "ip saddr 192.168.1.0/24 tcp dport 22 accept";
+  
+  # Allow ping explicitly across the firewall
+  networking.firewall.allowPing = true;
+  
+  # Insert the LAN rule at the top of the chain (using -I instead of -A)
+  # Adjust '192.168.1.0/24' to match your router's IP range if different
   networking.firewall.extraCommands = ''
-    iptables -A INPUT -p tcp --dport 22 -s 192.168.1.0/24 -j ACCEPT
+    iptables -I INPUT 1 -p tcp --dport 22 -s 192.168.1.0/24 -j ACCEPT
   '';
   networking.firewall.extraStopCommands = ''
     iptables -D INPUT -p tcp --dport 22 -s 192.168.1.0/24 -j ACCEPT || true
