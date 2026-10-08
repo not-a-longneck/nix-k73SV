@@ -238,7 +238,61 @@ services.logind.lidSwitchExternalPower = "ignore";
     ];
   };
 
-  # (removed: Proxmox/KVM virtiofs /mnt/shared mount, which needs a VM host)
+  # ======================================
+  # HEADLESS SUNSHINE (dedicated streaming session)
+  # ======================================
+
+  # Locked-down user: no wheel, password login disabled (autologin only)
+  users.users.streamer = {
+    isNormalUser = true;
+    description = "Sunshine streaming session";
+    extraGroups = [ "video" "render" "input" ];
+    hashedPassword = "!";
+  };
+
+  services.sunshine = {
+    enable = true;
+    autoStart = false;       # we launch it from the session script below
+    capSysAdmin = true;      # needed for KMS capture on Wayland
+    openFirewall = true;
+    settings = {
+      capture = "kms";
+      # encoder = "vaapi";   # or "software"; see notes below
+    };
+    applications = {
+      apps = [
+        { name = "Terminal"; cmd = "${pkgs.foot}/bin/foot"; }
+        { name = "Firefox";  cmd = "${pkgs.firefox}/bin/firefox"; }
+      ];
+    };
+  };
+
+  # Session script: start Sunshine in the background, then keep Cage alive
+  # with a program that does nothing. Apps launched from Moonlight appear
+  # as Wayland clients inside Cage.
+  services.displayManager.sessionPackages = let
+    streamSession = pkgs.writeShellScript "sunshine-cage-session" ''
+      ${config.security.wrapperDir}/sunshine &
+      exec ${pkgs.coreutils}/bin/sleep infinity
+    '';
+  in [
+    ((pkgs.writeTextDir "share/wayland-sessions/sunshine-cage.desktop" ''
+      [Desktop Entry]
+      Name=Sunshine (Cage)
+      Exec=${pkgs.cage}/bin/cage -s -- ${streamSession}
+      Type=Application
+    '').overrideAttrs (old: {
+      passthru = (old.passthru or { }) // { providedSessions = [ "sunshine-cage" ]; };
+    }))
+  ];
+
+  services.displayManager.autoLogin = {
+    enable = true;
+    user = "streamer";
+  };
+  services.displayManager.defaultSession = "sunshine-cage";
+
+
 
   # ======================================
   # SYSTEM STATE VERSION
