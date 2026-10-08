@@ -5,10 +5,10 @@
 { config, pkgs, lib, ... }:
 
 let
-  # Pinned so the system-level Sunshine service can point at this user's
-  # PipeWire socket. Verify with `id streamer` BEFORE rebuilding; if it differs,
-  # use the real value (changing an existing user's UID needs a home chown).
-  streamerUid = 1001;
+  # UID of the user Sunshine runs as (admin). Pinned so the system-level
+  # Sunshine service can point at this user's PipeWire socket. Verify with
+  # `id admin` BEFORE rebuilding; if it differs, use the real value.
+  sunshineUid = 1000;
 
   # Sunshine config. Written here (rather than via services.sunshine.settings)
   # because the module's generated file is not exposed to a custom system unit.
@@ -133,21 +133,15 @@ in
   users.users.admin = {
     isNormalUser = true;
     description = "admin";
-    extraGroups = [ "networkmanager" "wheel" "video" "render" "storage" "disk" ];
+    uid = sunshineUid;
+    extraGroups = [
+      "networkmanager" "wheel" "video" "render" "storage" "disk"
+      "audio" "input" "uinput"   # audio and virtual input for Sunshine
+    ];
     hashedPassword = "$6$Osqk1/PTMVPFxz.R$xnhXNz5ePRgPQZtGMaXlSDInDsrwNocuRqVmTfZcq4ujAer6PiesG27vZpkxdMJh3gtSzP9qOlTs8CTP9Pf.f/";
-  };
 
-  users.users.streamer = {
-    isNormalUser = true;
-    description = "Virtual Desktop Streamer";
-    uid = streamerUid;
-    extraGroups = [ "audio" "video" "render" "input" "uinput" ];
-
-    # You now log in through SDDM, so this account needs a real password.
-    # Generate one with:  mkpasswd -m sha-512
-    hashedPassword = "$6$3dru9zMRbrVm0KWn$g22JXOtbKRAMjaQvx.OJU4/EEracvCMCLFNATpZlzZ8UDFOS7XnqTDkrSrwf21R5/MSRtmefciO5ZIFVC26Z00";
-
-    # Starts the user manager (and PipeWire) at boot, so audio exists before anyone logs in.
+    # Starts the user manager (and PipeWire) at boot, so audio exists
+    # before anyone logs in.
     linger = true;
   };
 
@@ -235,21 +229,21 @@ in
   systemd.services.sunshine = {
     description = "Sunshine stream host (starts at boot, before login)";
     wantedBy = [ "multi-user.target" ];
-    wants = [ "user@${toString streamerUid}.service" ];
+    wants = [ "user@${toString sunshineUid}.service" ];
     after = [
       "network-online.target"
       "systemd-logind.service"
-      "user@${toString streamerUid}.service"
+      "user@${toString sunshineUid}.service"
     ];
 
-    # Audio: attach to the streamer user's PipeWire (kept alive by linger)
+    # Audio: attach to admin's PipeWire (kept alive by linger)
     environment = {
-      XDG_RUNTIME_DIR = "/run/user/${toString streamerUid}";
-      PULSE_SERVER = "unix:/run/user/${toString streamerUid}/pulse/native";
+      XDG_RUNTIME_DIR = "/run/user/${toString sunshineUid}";
+      PULSE_SERVER = "unix:/run/user/${toString sunshineUid}/pulse/native";
     };
 
     serviceConfig = {
-      User = "streamer";
+      User = "admin";
       ExecStart = "${lib.getExe config.services.sunshine.package} ${sunshineConf}";
 
       # KMS capture needs CAP_SYS_ADMIN; granting only this avoids running as root
